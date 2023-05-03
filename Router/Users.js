@@ -252,5 +252,7 @@ router.post("/add_user", UserRepo.addUser);
  *         description: Server error
  */
 router.patch("/edit_user/:id", UserRepo.editUser);
+router.post("/forget_password", UserRepo.forgetPassword);
+router.patch("/reset_password/:id/:token", UserRepo.resetPassword);
 
 export default router;

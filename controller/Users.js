@@ -1,5 +1,6 @@
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import sendMailer from "../Utils/mailer.js";
 import Authentication from "../middleware/authentication.js";
 import StatusCodes from "http-status-codes";
 import checkId from "../Utils/mongoIdCheck.js";
@@ -130,7 +131,6 @@ class UserRepo {
   });
 
   // ----------------------
-
   addUser = async (req, res) => {
     const { email } = req.body;
 
@@ -179,7 +179,6 @@ class UserRepo {
   //another implementation
   login_function = async (req, res) => {
     const { email, password } = req.body;
-
     //Simple Validation
     if (!email || !password) {
       return res
@@ -217,7 +216,7 @@ class UserRepo {
         //isMatch is true
         jwt.sign(
           { id: user.id },
-          process.env.jwtSecret,
+          process.env.JWT_SECRET,
           { expiresIn: 86400 },
           (err, token) => {
             if (err) throw err;
@@ -296,6 +295,52 @@ class UserRepo {
           res.status(200).send(true);
         }
       });
+    }
+  };
+
+  // forgotten passwords
+  forgetPassword = async (req, res) => {
+    const { email } = req.body;
+    console.log(email)
+    try {
+      const user = await User.findOne({ email });
+      if (!user)
+        return res
+          .status(StatusCodes.BAD_REQUEST)
+          .json({ status: "User Not Exists!!" });
+      const secret = process.env.JWT_SECRET + user.password;
+      const token = jwt.sign({ email: user.email, id: user._id }, secret, {
+        expiresIn: "5m",
+      });
+      const link = `${process.env.EMAIL_FRONTEND_RESET_LINK}/users/reset_password/${user._id}/${token}`;
+      // send message
+      sendMailer({ text: `Reset Password Your \n ${link}`, to: user.email });
+      return res.status(StatusCodes.Ok).json({message:"email sent"})
+    } catch (error) {console.log(error)}
+  };
+  // reset passwords
+  resetPassword = async (req, res) => {
+    const { id, token } = req.params;
+    const { password } = req.body;
+
+    const oldUser = await User.findOne({ _id: id });
+    if (!oldUser) return res.status(StatusCodes.BAD_REQUEST).json({ status: "User does not exist" });
+    const secret = process.env.JWT_SECRET + oldUser.password;
+    try {
+      await jwt.verify(token, secret);
+      const salt = await bcrypt.genSalt(10);
+      const encryptedPassword = await bcrypt.hash(password, salt);
+      await User.updateOne(
+        { _id: id },
+        {
+          $set: {
+            password: encryptedPassword,
+          },
+        }
+      );
+      return res.json({ status: "Password Updated" });
+    } catch (error) {
+      return res.json({ status: "reset password link expired" });
     }
   };
 }
